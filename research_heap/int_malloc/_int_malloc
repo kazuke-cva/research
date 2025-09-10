@@ -1,0 +1,38 @@
+# Malloc
+
+- Khi ta gọi `malloc`, thì sẽ gọi `__libc_malloc`. Trong `__libc_malloc` sẽ có các đoạn check xem vùng nhớ đã được khởi tạo chưa, kiểm tra kích thước, và nếu có chunk nào trong tcache bins thì sử dụng lại tại bước này luôn, nếu liên quan tới (fastbins, smallbins, unsorted bin, large bin) thì sẽ nhảy vào `_int_malloc`
+- Ta sẽ đi vào hàm chính của malloc là `_int_malloc`
+- Hàm này nhận 2 tham số `av` và `bytes`
+    - Với `av` là main arena, `bytes` là kích thước yêu cầu cấp phát
+- Bước đầu tiên là chuẩn hóa kích thước này về kích thước 1 chunk
+- Kích thước trả về là `nb`
+- Check `av` nếu không có nghĩa là chưa có chunk nào được cấp phát --> quay lại gọi `sysmalloc` để cấp phát
+- Nếu đã có, thì đầu tiên sẽ kiểm tra từ fastbins, nếu trong fastbins mà có chunk thì lấy kích thước phù hợp với yêu câu
+- Sẽ phân ra 2 trường hợp là đơn luồng và đa luồng
+- Và những chunk với size tương tự sẽ được đẩy vào tcache bins nếu trong tcache bins còn trống
+- Sau đó mới trả lại chunk cần cấp phát
+- Nếu trong fastbins không có chunk, hoặc chunk không phù hợp kích thước yêu cầu --> check smallbins trước
+- Nếu kích thước yêu cầu thuộc vùng smallbins mà có chunk phù hợp kích thước --> trả về chunk đó , chunk còn lại cùng kích thước được đẩy vào tcache bins nếu tcache bins còn trống
+- Nếu kích thước yêu cầu quá lớn, thì hợp nhất toàn bộ fastbins lại sau đó bắt đầu vào unsorted bin
+- Trong unsorted bin là danh sách liên kết đôi, vì thế phải check chunk nghiêm ngặt hơn
+- Nếu chỉ có 1 chunk duy nhất trong unsorted bin, kích thước chunk đó > kích thước yêu cầu + MINSIZE thì ta tách chunk, chunk còn lại vẫn được lưu trữ trong unsorted bin
+- Nếu kích thước chunk < kích thước yêu cầu + MINSIZE, nếu kích thước chunk = với kích thước yêu cầu và thuộc vùng quản lý tcache bins thì đưa vào tcache bins, tcache bins đầy thì trả về chunk đó luôn
+- Trường hợp chunk trong unsorted bin không dùng được, hoặc chunk được đưa vào tcache bins thì sẽ phân loại chunk trong unsorted bin
+- Nếu size chunk thuộc smallbins --> đưa vào smallbins theo idx
+- Nếu size chunk thuộc large bin
+    - Nếu trong large bin chưa có chunk nào, thì xếp ngay vị trí đầu
+    - Nếu có 1 chunk mà chunk đưa vào < chunk đó, xếp chunk đưa vào trước
+    - Nếu đã có rất nhiều chunk, xếp theo vị trí chunk tăng dần và nếu có chunk cùng size thì xếp vị trí sau chunk đó
+- Nếu trong quá trình xử lý chunk mà làm tcache đầy thì trả về chunk trong tcache
+- Nếu kích thước yêu cầu mà unsorted bin không thỏa, tìm kiếm trong largebin
+- Nếu không được thì sẽ quyét toàn bộ lại bin, tránh để sót
+- Cuối cùng không có thì sẽ lấy chunk từ top chunk
+
+# Các chỗ cần để ý
+
+- Qua kinh nghiệm làm các bài ctf, libc bây giờ thường được sử dụng >= 2.35, ta sẽ cần chú ý các chỗ sau:
+- 1 struct malloc_chunk
+- Kích thước 1 chunk được chuẩn hóa
+- Mã hóa con trỏ trong chunk
+- Giới hạn chunk trong tcache (7)
+- Unlink trong largebin
